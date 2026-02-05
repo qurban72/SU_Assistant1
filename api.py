@@ -1,63 +1,48 @@
 from fastapi import FastAPI, Request, BackgroundTasks
 import requests
 import os
-import sys
 import json
 
-# project.py se chain import karne ki koshish
 try:
     from project import chain
 except ImportError:
-    print("ERROR: project.py file nahi mili ya chain missing hai!")
-    sys.exit(1)
+    print("CRITICAL: project.py not found!")
 
 app = FastAPI()
 
-# --- Settings ---
 WASSENGER_TOKEN = os.getenv("WASSENGER_TOKEN")
 WASSENGER_URL = "https://api.wassenger.com/v1/messages"
-SECRET_TOKEN = "SU_SECRET_2026"
-
-def is_greeting(text):
-    greetings = {'hi', 'hello', 'hey', 'salam', 'aoa'}
-    words = text.lower().strip().split()
-    if not words: return False
-    return words[0] in greetings or any(g in text.lower() for g in ['assalam', 'hello'])
 
 def send_wassenger_message(phone, text):
-    print(f"DEBUG: Sending to {phone}")
     payload = {"phone": phone, "message": str(text)}
     headers = {"Content-Type": "application/json", "Token": WASSENGER_TOKEN}
     try:
-        res = requests.post(WASSENGER_URL, json=payload, headers=headers)
-        print(f"DEBUG: Wassenger Status: {res.status_code}")
-        return res.status_code
+        r = requests.post(WASSENGER_URL, json=payload, headers=headers)
+        print(f"DEBUG: Sent to {phone}, Status: {r.status_code}")
     except Exception as e:
-        print(f"ERROR: Send failed: {e}")
-        return 500
+        print(f"ERROR: Sending failed: {e}")
 
-def process_whatsapp_ai(phone, user_query):
+def process_whatsapp_ai(phone, query):
     try:
-        if is_greeting(user_query) and len(user_query.split()) < 4:
+        # Greeting check
+        if any(word in query.lower() for word in ['hi', 'hello', 'salam', 'aoa']):
             reply = "Hello! I am your SU Assistant. How can I help you today?"
         else:
-            print("DEBUG: Calling AI...")
-            reply = chain.invoke(user_query)
-        
+            reply = chain.invoke(query)
         send_wassenger_message(phone, reply)
     except Exception as e:
-        print(f"AI ERROR: {e}")
-        send_wassenger_message(phone, "I'm sorry, I'm having trouble with my AI brain right now.")
+        print(f"AI Error: {e}")
 
 @app.post("/whatsapp")
 async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
-        # 1. Raw body ko pakarna
+        # 1. Get raw body
         raw_body = await request.body()
-        data = raw_body.decode("utf-8")
-
-        # 2. STR ERROR FIX: Jab tak data dictionary (dict) na ban jaye, loads karte raho
-        for _ in range(3):
+        body_str = raw_body.decode("utf-8")
+        
+        # 2. Hardcore JSON Parsing
+        data = body_str
+        for _ in range(5):  # 5 baar koshish karein decode karne ki
             if isinstance(data, str):
                 try:
                     data = json.loads(data)
@@ -66,36 +51,35 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             else:
                 break
 
-        # Check agar abhi bhi string hai toh error handle karein
-        if isinstance(data, str):
-            print("DEBUG: Data is still a string after decoding!")
-            return {"status": "error"}
+        # 3. Agar ab bhi string hai, toh manual check karein
+        if not isinstance(data, dict):
+            print(f"CRITICAL DEBUG: Data is still a string! Value: {data}")
+            return {"status": "error", "reason": "data_not_dict"}
 
-        print(f"DEBUG: Received Event: {data.get('event')}")
+        # 4. Ab safely keys nikaalein
+        event_type = data.get('event')
+        print(f"DEBUG: Event Received: {event_type}")
 
-        if data.get('event') == 'message:in:new':
-            inner = data.get('data', {})
-            phone = inner.get('phone')
-            user_query = inner.get('body', {}).get('text')
+        if event_type == 'message:in:new':
+            # Use .get() everywhere to be 100% safe
+            message_data = data.get('data', {})
+            phone = message_data.get('phone')
+            body_obj = message_data.get('body', {})
+            user_query = body_obj.get('text')
 
-            if not phone: return {"status": "no_phone"}
-
-            # Agar image bhej di hai (text missing hai)
-            if not user_query:
-                print("DEBUG: Media detected, sending warning.")
-                background_tasks.add_task(send_wassenger_message, phone, "I can only handle text at the moment. Please type your question.")
-                return {"status": "ok"}
-
-            # Sab theek hai toh AI process karein
-            background_tasks.add_task(process_whatsapp_ai, phone, user_query)
-            return {"status": "ok"}
-
-        return {"status": "ignored"}
+            if phone:
+                if user_query:
+                    background_tasks.add_task(process_whatsapp_ai, phone, user_query)
+                else:
+                    # Message is media/image
+                    background_tasks.add_task(send_wassenger_message, phone, "I can only handle text messages right now.")
+            
+        return {"status": "ok"}
 
     except Exception as e:
-        print(f"CRASH ERROR: {e}")
-        return {"status": "error", "message": str(e)}
+        # Yahan error print hoga jo aapne logs mein bheja tha
+        print(f"CRASH ERROR IN WEBHOOK: {e}")
+        return {"status": "error"}
 
 @app.get("/")
-def home():
-    return {"status": "online"}
+def home(): return {"status": "online"}
