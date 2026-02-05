@@ -2,12 +2,13 @@ from fastapi import FastAPI, Request, BackgroundTasks
 import requests
 import os
 import sys
+import json
 
 # Try to import chain from project.py
 try:
     from project import chain
 except ImportError:
-    print("ERROR: project.py or 'chain' not found! Make sure project.py is in the same folder.")
+    print("ERROR: project.py or 'chain' not found! Ensure project.py is in the same folder.")
     sys.exit(1)
 
 app = FastAPI()
@@ -15,7 +16,7 @@ app = FastAPI()
 # --- Configuration (Railway Variables) ---
 WASSENGER_TOKEN = os.getenv("WASSENGER_TOKEN")
 WASSENGER_URL = "https://api.wassenger.com/v1/messages"
-SECRET_TOKEN = "SU_SECRET_2026"  # Streamlit app headers mein yehi use karein
+SECRET_TOKEN = "SU_SECRET_2026"  # Streamlit app ke liye
 
 # --- Helper Functions ---
 
@@ -25,7 +26,8 @@ def is_greeting(text):
     words = text.lower().strip().split()
     if not words:
         return False
-    return words[0] in greetings or any(g in text.lower() for g in ['assalam', 'hello'])
+    # Check first word or common phrases
+    return words[0] in greetings or any(g in text.lower() for g in ['assalam', 'hello', 'hey'])
 
 def send_wassenger_message(phone, text):
     """Sends a message back to the user via Wassenger."""
@@ -65,21 +67,34 @@ def process_whatsapp_ai(phone, user_query):
         
     except Exception as e:
         print(f"ERROR in process_whatsapp_ai: {e}")
-        send_wassenger_message(phone, "I'm sorry, I'm having trouble processing your request right now. Please try again.")
+        send_wassenger_message(phone, "I apologize, I'm having trouble processing that right now.")
 
 # --- API Endpoints ---
 
 @app.get("/")
 def home():
-    return {"status": "online", "message": "SU Assistant is running"}
+    return {"status": "online", "message": "SU Assistant Server is Online"}
 
 @app.post("/whatsapp")
 async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
-        data = await request.json()
+        # Step 1: Handle raw body and convert to JSON safely
+        body_bytes = await request.body()
+        body_str = body_bytes.decode("utf-8")
+        
+        try:
+            data = json.loads(body_str)
+        except json.JSONDecodeError:
+            # Fallback if it's already parsed
+            data = await request.json()
+
+        # In case it's double-encoded as a string
+        if isinstance(data, str):
+            data = json.loads(data)
+
         print(f"DEBUG: Webhook received event: {data.get('event')}")
 
-        # Process only NEW incoming messages
+        # Step 2: Process only NEW incoming messages
         if data.get('event') == 'message:in:new':
             inner_data = data.get('data', {})
             phone = inner_data.get('phone')
@@ -87,17 +102,17 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
             user_query = msg_body.get('text')
 
             if not phone:
-                print("DEBUG: No phone number found in data. Ignoring.")
+                print("DEBUG: No phone number found in data.")
                 return {"status": "error", "message": "No phone"}
 
             if not user_query:
                 print("DEBUG: Non-text message received.")
-                send_wassenger_message(phone, "I can currently only understand text messages. Please type your query.")
+                background_tasks.add_task(send_wassenger_message, phone, "Currently, I can only understand text messages. Please type your query.")
                 return {"status": "non_text_ignored"}
 
-            # Start background task
+            # Step 3: Start background task
             background_tasks.add_task(process_whatsapp_ai, phone, user_query)
-            return {"status": "ok", "message": "Task queued"}
+            return {"status": "ok"}
 
         return {"status": "ignored", "event": data.get('event')}
 
