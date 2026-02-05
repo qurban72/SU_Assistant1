@@ -19,11 +19,13 @@ g_toke = os.getenv("GOOGLE_API_KEY")
 
 # 1. model for chat
 llm = HuggingFaceEndpoint(
-    repo_id="mistralai/Mistral-7B-Instruct-v0.2",
-    task="chat-completion",
+    # Llama 3.1 use karein behtar results ke liye
+    repo_id="meta-llama/Llama-3.1-8B-Instruct", 
+    task="text-generation",
     max_new_tokens=512,
+    repetition_penalty=1.1, # Ye bot ko bar bar ek hi baat karne se rokta hai
     return_full_text=False,
-    huggingfacehub_api_token=HF_TOKE,  # safe token usage
+    huggingfacehub_api_token=HF_TOKE,
 )
 model = ChatHuggingFace(llm=llm)
 
