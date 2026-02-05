@@ -3,77 +3,63 @@ import requests
 import os
 import json
 
-try:
-    from project import chain
-except ImportError:
-    chain = None
-
 app = FastAPI()
 
-# Railway Variables - Double check these names in Railway!
+# Railway Variables
 WASSENGER_TOKEN = os.getenv("WASSENGER_TOKEN")
 WASSENGER_URL = "https://api.wassenger.com/v1/messages"
 
-def send_wassenger_message(phone, text):
-    print(f"--- ATTEMPTING TO SEND ---")
-    if not WASSENGER_TOKEN:
-        print("CRITICAL: WASSENGER_TOKEN is NULL in Railway Variables!")
-        return
-    
-    payload = {
-        "phone": str(phone).replace("+", "").strip(),
-        "message": str(text)
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Token": WASSENGER_TOKEN.strip()
-    }
-
-    try:
-        r = requests.post(WASSENGER_URL, json=payload, headers=headers)
-        print(f"WASSENGER STATUS: {r.status_code}")
-        print(f"WASSENGER RESPONSE: {r.text}")
-    except Exception as e:
-        print(f"NETWORK ERROR: {e}")
+@app.get("/")
+def home():
+    return {"status": "online", "token_exists": bool(WASSENGER_TOKEN)}
 
 @app.post("/whatsapp")
 async def whatsapp_webhook(request: Request):
+    # 1. Print Raw Data (Sub se pehle dekhen data aa kya raha hai)
+    raw_body = await request.body()
+    body_str = raw_body.decode("utf-8")
+    print(f"RAW_PAYLOAD_RECEIVED: {body_str}")
+
+    if not body_str:
+        print("EMPTY BODY RECEIVED")
+        return {"status": "empty"}
+
     try:
-        raw_body = await request.body()
-        data = json.loads(raw_body.decode("utf-8"))
+        # 2. Parse JSON
+        data = json.loads(body_str)
         
-        # Double decode if needed
-        if isinstance(data, str):
-            data = json.loads(data)
+        # Wassenger event check
+        event = data.get("event")
+        print(f"EVENT_TYPE: {event}")
 
-        if data.get('event') == 'message:in:new':
-            inner = data.get('data', {})
-            phone = inner.get('phone')
-            # Safely get text
-            body = inner.get('body', {})
-            user_query = body.get('text') if isinstance(body, dict) else None
+        if event == "message:in:new":
+            msg_data = data.get("data", {})
+            phone = msg_data.get("phone")
+            message_text = msg_data.get("body", {}).get("text")
+            
+            print(f"FROM: {phone} | MESSAGE: {message_text}")
 
-            if phone and user_query:
-                print(f"DEBUG: Message from {phone}: {user_query}")
+            if phone and message_text:
+                # 3. Quick Response Test (Bina AI ke check karen message jata hai?)
+                reply = f"I received your message: {message_text}"
                 
-                # AI Reply Logic
-                if any(word in user_query.lower() for word in ['hi', 'hello', 'salam']):
-                    reply = "Hello! Server is online. Testing response."
-                elif chain:
-                    reply = chain.invoke(user_query)
-                else:
-                    reply = "AI Chain not loaded but server is alive."
+                print(f"ATTEMPTING_SEND_TO: {phone}")
                 
-                # DIRECT SEND (No background task for testing)
-                send_wassenger_message(phone, reply)
+                headers = {
+                    "Token": WASSENGER_TOKEN.strip(),
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "phone": phone,
+                    "message": reply
+                }
                 
-            return {"status": "ok"}
-        
-        return {"status": "ignored"}
+                response = requests.post(WASSENGER_URL, json=payload, headers=headers)
+                print(f"WASSENGER_API_STATUS: {response.status_code}")
+                print(f"WASSENGER_API_RESPONSE: {response.text}")
+
+        return {"status": "success"}
+
     except Exception as e:
-        print(f"WEBHOOK ERROR: {e}")
-        return {"status": "error"}
-
-@app.get("/")
-def home():
-    return {"status": "running", "token_exists": bool(WASSENGER_TOKEN)}
+        print(f"MAJOR_ERROR: {str(e)}")
+        return {"status": "error", "detail": str(e)}
