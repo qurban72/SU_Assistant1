@@ -1,55 +1,61 @@
-from fastapi import FastAPI, Form, BackgroundTasks, Response
-from twilio.rest import Client
+from fastapi import FastAPI, BackgroundTasks, Request
+import requests
 import os
-from project import chain
+import traceback
+from project import chain # Aapka RAG chain
 
 app = FastAPI()
 
-# Twilio Credentials (Railway Variables se uthayega)
-TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
-
-import traceback
+# Railway Variables mein WASSENGER_TOKEN add kar dena
+WASSENGER_TOKEN = os.getenv("WASSENGER_TOKEN")
 
 def send_ai_reply(user_phone, user_msg):
     try:
         print(f"DEBUG: Processing message for {user_phone}...")
         
-        # 1. Check karein ke 'chain' object initialize hua hai ya nahi
-        if 'chain' not in globals():
-            print("ERROR: 'chain' object is not defined!")
-            return
-
-        # 2. AI se answer mangwao
+        # 1. AI se answer mangwao (RAG Chain)
         ans = chain.invoke(user_msg)
-        print(f"DEBUG: AI Response generated: {ans[:50]}...") # Pehle 50 chars print karein
+        print(f"DEBUG: AI Response generated: {ans[:50]}...")
 
-        # 3. Twilio API ke zariye reply bhejo
-        # Yaad rahe ke user_phone ka format 'whatsapp:+92...' hona chahiye
-        message = client.messages.create(
-            from_='whatsapp:+14155238886',
-            body=ans,
-            to=user_phone
-        )
-        print(f"DEBUG: Message sent successfully! SID: {message.sid}")
+        # 2. Wassenger API ke zariye reply bhejo
+        url = "https://api.wassenger.com/v1/messages"
+        headers = {
+            "Token": WASSENGER_TOKEN,
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "phone": user_phone, # Wassenger ko sirf number chahiye (+92...)
+            "message": ans
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"DEBUG: Wassenger Response: {response.status_code} - {response.text}")
 
     except Exception as e:
         print(f"Background Task Error: {str(e)}")
-        # Ye line pura error ka rasta (Line number) dikhayegi
         traceback.print_exc()
+
 @app.get('/')
 def home():
-    return "SU Assistant is Online"
+    return "SU Assistant (Wassenger) is Online"
 
 @app.post('/whatsapp')
-async def whatsapp_reply(
-    background_tasks: BackgroundTasks,
-    Body: str = Form(...),
-    From: str = Form(...)
-):
-    # Foran background task shuru karo
-    background_tasks.add_task(send_ai_reply, From, Body)
+async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
+    # Wassenger JSON bhejta hai
+    data = await request.json()
     
-    # Twilio ko foran 200 OK bhej do (Taakay timeout na ho)
-    return Response(content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>', media_type="application/xml")
+    # Check karein ke ye naya message event hai
+    if data.get('event') == 'message:in:new':
+        user_msg = data['data']['body']
+        user_phone = data['data']['fromNumber'] # Direct number milta hai (+92...)
+        
+        # Background task shuru karo
+        background_tasks.add_task(send_ai_reply, user_phone, user_msg)
+    
+    return {"status": "accepted"}
+
+if __name__ == "__main__":
+    import uvicorn
+    # Railway ke liye port handling
+    port = int(os.environ.get("PORT", 5000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

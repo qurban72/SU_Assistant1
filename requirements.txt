@@ -1,10 +1,7 @@
 fastapi
 uvicorn[standard]
-python-multipart
-twilio
-langchain
-langchain-huggingface
-langchain_community
-langchain-google-genai
-faiss-cpu
 python-dotenv
+langchain-huggingface
+langchain-community
+faiss-cpu
+requests
