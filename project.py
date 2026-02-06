@@ -32,10 +32,11 @@ model = ChatHuggingFace(llm=llm)
 # %%
 
 # 2. Vectorstore Setup
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="text-embedding-004",
-    google_api_key=g_toke
+embeddings = HuggingFaceEndpointEmbeddings(
+    model="sentence-transformers/all-MiniLM-L6-v2",
+    huggingfacehub_api_token=HF_TOKE
 )
+
 vectorstore = FAISS.load_local(
     "faiss_index", 
     embeddings, 
