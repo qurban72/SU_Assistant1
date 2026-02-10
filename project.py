@@ -16,10 +16,11 @@ HF_TOKE = os.getenv("HUGGINGFACE_KEY")
 g_toke = os.getenv("GOOGLE_API_KEY")
 
 llm = HuggingFaceEndpoint(
-    repo_id="meta-llama/Meta-Llama-3-8B-Instruct", # Example of a highly compatible model
+    repo_id="stepfun-ai/Step-3.5-Flash", # Example of a highly compatible model
     task="text-generation",
     max_new_tokens=512,
     temperature=0.5,
+    huggingfacehub_api_token=HF_TOKE
 )
 model = ChatHuggingFace(llm = llm)
 
