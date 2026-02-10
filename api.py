@@ -4,21 +4,16 @@ import os
 import json
 import traceback
 
-# AI Chain Import
-try:
-    from project import chain
-except ImportError:
-    print("CRITICAL: project.py not found!")
-    chain = None
+
+from project import rag_chain
+
 
 app = FastAPI()
 
-# Railway Environment Variables
 WASSENGER_TOKEN = os.getenv("WASSENGER_TOKEN")
 WASSENGER_URL = "https://api.wassenger.com/v1/messages"
-SECRET_TOKEN = "SU_SECRET_2026" # Streamlit ki security ke liye
+SECRET_TOKEN = "SU_SECRET_2026" 
 
-# --- Helper Functions ---
 
 def send_wassenger_message(phone, text):
     """WhatsApp par message bhejne ka function."""

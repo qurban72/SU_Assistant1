@@ -74,3 +74,4 @@ chain = (
     | StrOutputParser()
 )
 
+rag_chain = chain
