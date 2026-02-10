@@ -44,9 +44,9 @@ def process_ai_logic(phone, user_query):
         # Greetings handle karna
         if any(greet == query_lower for greet in ['hi', 'hello', 'salam', 'aoa', 'hey']):
             reply = "Hello! I am your SU Assistant. How can I help you with University of Sindh matters today?"
-        elif chain:
+        elif rag_chain:
             print(f"DEBUG: Calling AI for: {user_query}")
-            reply = chain.invoke(user_query)
+            reply = rag_chain.invoke(user_query)
         else:
             reply = "I'm sorry, my AI brain is offline. Please try later."
         
@@ -112,8 +112,8 @@ async def ask_ai(request: Request):
         if not user_question:
             return {"error": "No question provided"}
 
-        if chain:
-            answer = chain.invoke(user_question)
+        if rag_chain:
+            answer = rag_chain.invoke(user_question)
             return {"answer": answer}
         else:
             return {"error": "AI Chain not initialized"}
