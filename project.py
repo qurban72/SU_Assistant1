@@ -15,8 +15,13 @@ load_dotenv()
 HF_TOKE = os.getenv("HUGGINGFACE_KEY")
 g_toke = os.getenv("GOOGLE_API_KEY")
 
-model = ChatGoogleGenerativeAI(model="gemini-2.0-flash-lite", temperature=0.3)
-
+llm = HuggingFaceEndpoint(
+    repo_id="meta-llama/Meta-Llama-3-8B-Instruct", # Example of a highly compatible model
+    task="text-generation",
+    max_new_tokens=512,
+    temperature=0.5,
+)
+model = ChatHuggingFace(llm = llm)
 
 embeddings = HuggingFaceEndpointEmbeddings(
     model="sentence-transformers/all-MiniLM-L6-v2",
