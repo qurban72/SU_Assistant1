@@ -37,7 +37,8 @@ def send_wassenger_message(phone, text):
     except Exception as e:
         print(f"NETWORK_ERROR: {e}")
 
-def process_ai_logic(phone, user_query, rag_chain=None):
+def process_ai_logic(phone, user_query):
+    global rag_chain
     """AI se jawab nikalne ka background process."""
     try:
         query_lower = user_query.lower().strip()
